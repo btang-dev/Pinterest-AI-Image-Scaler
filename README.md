@@ -1,4 +1,4 @@
-# 🚀 Quick Start Guide - AI Image Upscaler
+# Pinterest AI Image Upscaler
 
 ## ✅ **TESTED AND WORKING!**
 Here's how to get started quickly:
@@ -111,3 +111,4 @@ AI-Image-Upscaler/
 ---
 
 **🎉 You're ready to upscale! Try it with your photos now!**
+
