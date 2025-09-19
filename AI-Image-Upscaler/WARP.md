@@ -41,6 +41,16 @@ python simple_upscaler.py "image.jpg"
 # Fast processing with ESPCN model (recommended for development)
 python simple_upscaler.py "image.jpg" -m ESPCN
 
+# GPU-ACCELERATED VERSION (Recommended for RTX/CUDA systems)
+# Ultra-fast GPU processing with PyTorch CUDA
+python gpu_upscaler.py "image.jpg" --force-gpu
+
+# GPU batch processing
+python gpu_upscaler.py "image_folder" --force-gpu
+
+# Auto-select GPU if available (fallback to CPU OpenCV)
+python gpu_upscaler.py "image.jpg" -m ESPCN
+
 # Batch process a directory
 python simple_upscaler.py "image_folder" -m ESPCN
 
@@ -54,13 +64,22 @@ python simple_upscaler.py "image_folder" -m ESPCN -r
 ### Testing and Development
 ```powershell
 # Test model initialization and dependencies
-python -c "import torch; import cv2; import PIL; print('✓ All dependencies imported successfully')"
+python -c "import cv2; import PIL; import numpy as np; print('✓ All dependencies imported successfully')"
 
 # Check CUDA availability (for GPU acceleration)
 python -c "import cv2; print(f'CUDA devices: {cv2.cuda.getCudaEnabledDeviceCount()}')"
 
+# Test OpenCV DNN super-resolution support
+python -c "import cv2; print('✓ DNN SuperRes available' if hasattr(cv2.dnn_superres, 'DnnSuperResImpl_create') else '✗ DNN SuperRes NOT available')"
+
 # Verify model downloads
 dir models\
+
+# Quick test with specific model (without processing)
+python -c "from simple_upscaler import SimpleImageUpscaler; u = SimpleImageUpscaler('ESPCN'); print('✓ Model OK' if u.initialize_model() else '✗ Model FAILED')"
+
+# Test image format support
+python -c "from simple_upscaler import SimpleImageUpscaler; u = SimpleImageUpscaler(); print(f'Supported formats: {sorted(u.supported_formats)}')"
 ```
 
 ### Model Management
@@ -98,14 +117,26 @@ dir models\
 ### Key Design Patterns
 
 **Model Factory Pattern**: Dynamic model loading based on method parameter
-**Strategy Pattern**: Different AI models implement same upscaling interface  
+- Models dictionary maps names to GitHub URLs and scale factors
+- Automatic model download and caching in `models/` directory
+
+**Strategy Pattern**: Different AI models implement same upscaling interface
+- All models use OpenCV DNN Super-Resolution with 4x scaling
+- Device selection abstracted (auto-detect CUDA, fallback to CPU)
+
 **Template Method**: Common processing pipeline with model-specific implementations
+- Consistent workflow: initialize → load image → upscale → save with quality control
+- Error handling and validation at each step
+
 **Progress Tracking**: Uses tqdm for batch processing feedback
+- Real-time progress bars with file names and processing stats
+- Graceful error handling continues batch processing on individual failures
 
 ### File Structure
 ```
 AI-Image-Upscaler/
 ├── simple_upscaler.py     # Main application and SimpleImageUpscaler class
+├── gpu_upscaler.py        # GPU-accelerated version with PyTorch CUDA support
 ├── setup.py               # Environment setup and dependency installation
 ├── setup.bat              # Windows setup wrapper
 ├── requirements.txt       # Python dependencies
@@ -118,10 +149,32 @@ AI-Image-Upscaler/
 ## Development Notes
 
 ### Performance Considerations
-- **ESPCN model**: Recommended for development (sub-second processing)
-- **EDSR model**: Use for final high-quality outputs (several minutes per image)
-- **GPU acceleration**: Automatically enabled when CUDA is available
+- **ESPCN model**: Recommended for development (~0.5s processing, ~100KB model size)
+- **EDSR model**: Use for final high-quality outputs (~4+ minutes per image, ~38MB model)
+- **FSRCNN model**: Balanced option (~30 seconds processing time)
+- **LapSRN model**: Good for detailed images with moderate processing time
+- **GPU acceleration**: Automatically enabled when CUDA is available (significant speedup)
 - **Memory management**: Models handle large images through automatic optimization
+- **Processing times**: Scale with input resolution (900x1200 → 3600x4800 benchmarks above)
+
+### Debugging and Troubleshooting
+```powershell
+# Debug model download issues
+dir models\  # Check if models downloaded correctly
+
+# Test minimal OpenCV functionality
+python -c "import cv2, numpy as np; img=np.zeros((100,100,3), dtype=np.uint8); print(f'OpenCV basic test: {img.shape}')"
+
+# Check specific model initialization without processing
+python -c "from simple_upscaler import SimpleImageUpscaler; u = SimpleImageUpscaler('ESPCN'); u.initialize_model()"
+
+# Test with a small test image (create minimal test case)
+python -c "import cv2, numpy as np; cv2.imwrite('test_small.jpg', np.random.randint(0,255,(50,50,3),dtype=np.uint8))"
+python simple_upscaler.py "test_small.jpg" -m ESPCN
+
+# Check available OpenCV backends
+python -c "import cv2; print(f'Available backends: {[cv2.dnn.getAvailableBackends()]}')"
+```
 
 ### Supported Input Formats
 - Image formats: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.tif`, `.webp`
@@ -135,6 +188,23 @@ AI-Image-Upscaler/
 - Progress tracking with detailed error reporting for batch operations
 
 ### Extension Points
-- New AI models: Add to `models` dictionary in `SimpleImageUpscaler.__init__`
-- Custom processing: Override `upscale_image` method for specialized workflows
-- Output formats: Extend `is_supported_format` and save logic in `upscale_image`
+- **New AI models**: Add to `models` dictionary in `SimpleImageUpscaler.__init__` with URL and scale factor
+- **Custom processing**: Override `upscale_image` method for specialized workflows
+- **Output formats**: Extend `is_supported_format` and save logic in `upscale_image`
+- **Device backends**: Modify device selection logic in `initialize_model` for custom backends
+- **Progress callbacks**: Extend tqdm usage in `upscale_batch` for custom progress handling
+- **Quality settings**: Customize compression settings in save logic (lines 167-172)
+- **Batch processing**: Modify file discovery logic in `upscale_batch` for custom filtering
+
+## Common Issues and Solutions
+
+### Setup Issues
+- **"Module 'cv2' has no attribute 'dnn_superres'"**: Install `opencv-contrib-python` instead of basic `opencv-python`
+- **PyTorch not detected in setup.py**: The setup script tries to detect CUDA support but falls back gracefully
+- **Virtual environment activation**: Use correct script for your shell (PowerShell vs Command Prompt)
+
+### Runtime Issues
+- **Model download failures**: Check internet connection and GitHub accessibility
+- **CUDA errors**: Automatic fallback to CPU, but check CUDA installation if GPU acceleration needed
+- **Memory issues**: Large images may require significant RAM; process smaller batches or use ESPCN model
+- **Batch processing stops**: Individual file failures don't stop batch processing; check summary output
